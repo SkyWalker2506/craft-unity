@@ -1,0 +1,26 @@
+{
+  "name": "com.skywalker.craft",
+  "version": "0.1.0",
+  "displayName": "CRAFT - Claude's Reliable AI Framework for Transactions",
+  "description": "Safe AI execution layer with transaction safety, rollback, and validation for Unity MCP",
+  "unity": "6000.0",
+  "dependencies": {
+    "com.unity.ai.assistant": "2.0.0"
+  },
+  "author": {
+    "name": "Musab Kara",
+    "url": "https://github.com/SkyWalker2506"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SkyWalker2506/craft-unity.git"
+  },
+  "keywords": [
+    "unity",
+    "mcp",
+    "ai",
+    "transactions",
+    "rollback",
+    "undo"
+  ]
+}

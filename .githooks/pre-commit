@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# craft-unity pre-commit hook — ensures every staged Unity asset has its .meta sibling.
+# Enable locally with: ./.githooks/install.sh
+set -e
+
+# Unity asset extensions that must carry a matching .meta file.
+assetRegex='\.(cs|asmdef|asmref|prefab|asset|unity|mat|shader|shadergraph|hlsl|png|jpg|jpeg|tga|psd|exr|hdr|bmp|fbx|obj|blend|dae|gltf|glb|wav|ogg|mp3|aiff|flac|mov|mp4|webm|anim|controller|mask|overrideController|mixer|ttf|otf|inputactions|preset|playable|terrainlayer|signal|renderTexture|cubemap|brush|lightingdata)$'
+
+fail=0
+reported=""
+
+# enumerate staged files with status: A=added, M=modified, D=deleted, R=renamed, C=copied
+while IFS=$'\t' read -r status path rest; do
+    # Renames look like: R100<TAB>old<TAB>new — we want the new path (in $rest when status starts with R)
+    case "$status" in
+        R*|C*)
+            path="$rest"
+            status="${status:0:1}"
+            ;;
+    esac
+    [ -z "$path" ] && continue
+
+    # Only care about asset files (ignore .meta files themselves and non-matching extensions).
+    if echo "$path" | grep -Eq '\.meta$'; then continue; fi
+    if ! echo "$path" | grep -Eiq "$assetRegex"; then continue; fi
+
+    meta="${path}.meta"
+
+    if [ "$status" = "D" ]; then
+        # Deleting an asset — meta must also be staged-for-delete or already gone.
+        if git ls-files --error-unmatch -- "$meta" >/dev/null 2>&1; then
+            if ! git diff --cached --name-status -- "$meta" | grep -q '^D'; then
+                reported+="  [missing delete] $meta still tracked — also `git rm` it\n"
+                fail=1
+            fi
+        fi
+        continue
+    fi
+
+    # For A / M / R / C — meta must be staged or already tracked (and not being deleted).
+    if git diff --cached --name-status -- "$meta" | grep -Eq '^[AM]'; then
+        continue
+    fi
+    if git ls-files --error-unmatch -- "$meta" >/dev/null 2>&1 && \
+       ! git diff --cached --name-status -- "$meta" | grep -q '^D'; then
+        continue
+    fi
+
+    reported+="  [missing .meta] $path — run Unity once to generate $meta, then \`git add\` it\n"
+    fail=1
+done < <(git diff --cached --name-status)
+
+if [ $fail -ne 0 ]; then
+    printf "\n\e[31m✗ pre-commit blocked: .meta file mismatches\e[0m\n" >&2
+    printf "$reported" >&2
+    printf "\nUnity will silently drop assets whose .meta is missing in a Git-URL UPM package.\n" >&2
+    printf "Fix the pairs above and retry. To bypass (NOT recommended): --no-verify\n\n" >&2
+    exit 1
+fi
+
+exit 0

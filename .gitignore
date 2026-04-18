@@ -1,2 +1,3 @@
 # Stub files — specification-only, not implementation
 *.stub.cs
+forge/

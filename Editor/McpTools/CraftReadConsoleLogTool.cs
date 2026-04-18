@@ -38,10 +38,11 @@ namespace SkyWalker.Craft.Editor.McpTools
         public static object ReadConsoleLog(ReadConsoleLogParams parameters)
         {
             parameters ??= new ReadConsoleLogParams();
+            string level = (parameters.level ?? "all").Trim().ToLowerInvariant();
 
             try
             {
-                if (parameters.level != "all" && parameters.level != "warning" && parameters.level != "error")
+                if (level != "all" && level != "warning" && level != "error")
                 {
                     return new
                     {
@@ -112,7 +113,7 @@ namespace SkyWalker.Craft.Editor.McpTools
                         continue;
 
                     string entryLevel = InferLevel(line);
-                    if (!MatchesLevel(parameters.level, entryLevel))
+                    if (!MatchesLevel(level, entryLevel))
                         continue;
 
                     totalAvailable++;

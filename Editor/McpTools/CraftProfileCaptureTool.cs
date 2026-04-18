@@ -115,11 +115,18 @@ namespace SkyWalker.Craft.Editor.McpTools
         {
             foreach (var statName in statNames)
             {
-                var recorder = ProfilerRecorder.StartNew(category, statName, 1);
-                if (recorder.Valid)
-                    return recorder;
+                try
+                {
+                    var recorder = ProfilerRecorder.StartNew(category, statName, 1);
+                    if (recorder.Valid)
+                        return recorder;
 
-                recorder.Dispose();
+                    recorder.Dispose();
+                }
+                catch (ArgumentException)
+                {
+                    // Counter names vary by Unity version and editor/runtime configuration.
+                }
             }
 
             return default;

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0] - Planned
+
+### Planned
+- `Craft_ImportUnityPackage` — legacy .unitypackage import (URL + path + silent/interactive modes) with best-effort rollback
+- Enables `Assets_InstallUPM` to handle 90% of Asset Store library (legacy format)
+- Closes weak-point W5: automated import of legacy asset packages
+
+**Spec:** see `ccplugin-unity-craft/skills/unity-craft/tools/craft-unity-upstream-ops.md` § v0.3 Roadmap
+
+---
+
 ## [0.2.0] - 2026-04-18
 
 ### Added

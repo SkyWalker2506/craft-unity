@@ -32,6 +32,7 @@ namespace SkyWalker.Craft.Editor.McpTools
         public static object Execute(SetTextureImporterParams parameters)
         {
             parameters ??= new SetTextureImporterParams();
+            string transactionId = string.Empty;
 
             try
             {
@@ -68,37 +69,42 @@ namespace SkyWalker.Craft.Editor.McpTools
                     }
                 }
 
-                var txId = transactionMgr.Begin(transactionName);
+                transactionId = transactionMgr.Begin(transactionName);
                 var opResult = opHandler.Execute(operation);
 
                 if (!opResult.success)
                 {
-                    transactionMgr.Rollback(txId);
+                    transactionMgr.Rollback(transactionId);
                     return new
                     {
                         success = false,
                         error = opResult.error,
-                        transactionId = txId
+                        transactionId
                     };
                 }
 
-                transactionMgr.Commit(txId);
+                transactionMgr.Commit(transactionId);
 
                 return new
                 {
                     success = true,
-                    transactionId = txId,
+                    transactionId,
                     assetPath = parameters.assetPath,
                     appliedOverrides = parameters.overrides ?? new Dictionary<string, object>()
                 };
             }
             catch (System.Exception ex)
             {
+                if (!string.IsNullOrEmpty(transactionId))
+                {
+                    CraftEngine.Instance.Transactions.Rollback(transactionId);
+                }
+
                 return new
                 {
                     success = false,
                     error = ex.Message,
-                    transactionId = string.Empty
+                    transactionId
                 };
             }
         }

@@ -46,7 +46,7 @@ namespace SkyWalker.Craft.Editor.Operations.ImportSettings
                 return result;
             }
 
-            if (!assetPath.StartsWith("Assets/"))
+            if (!assetPath.StartsWith("Assets/", StringComparison.Ordinal))
             {
                 result.AddError($"assetPath must start with 'Assets/': {assetPath}", Type);
                 return result;

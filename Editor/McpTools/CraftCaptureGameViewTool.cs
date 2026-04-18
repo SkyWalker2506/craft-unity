@@ -32,6 +32,15 @@ namespace SkyWalker.Craft.Editor.McpTools
 
             try
             {
+                if (!Application.isPlaying)
+                {
+                    return new
+                    {
+                        error = "Game view capture requires Play mode in Unity 6 so ScreenCapture runs after rendered frames are available.",
+                        filePath = (string)null
+                    };
+                }
+
                 if (parameters.width < 256 || parameters.width > 4096 ||
                     parameters.height < 144 || parameters.height > 4096)
                 {

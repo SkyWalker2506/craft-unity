@@ -4,7 +4,9 @@
   "displayName": "CRAFT - Claude's Reliable AI Framework for Transactions",
   "description": "Safe AI execution layer for Unity MCP — transaction safety, rollback, validation + Inspect (capture/profile/console) + ImportSettings (texture/model) ops.",
   "unity": "6000.0",
-  "dependencies": {},
+  "dependencies": {
+    "com.unity.ai.assistant": "2.6.0-pre.1"
+  },
   "author": {
     "name": "Musab Kara",
     "url": "https://github.com/SkyWalker2506"

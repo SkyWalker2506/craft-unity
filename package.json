@@ -1,8 +1,8 @@
 {
   "name": "com.skywalker.craft",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "displayName": "CRAFT - Claude's Reliable AI Framework for Transactions",
-  "description": "Safe AI execution layer with transaction safety, rollback, and validation for Unity MCP",
+  "description": "Safe AI execution layer for Unity MCP — transaction safety, rollback, validation + Inspect (capture/profile/console) + ImportSettings (texture/model) ops.",
   "unity": "6000.0",
   "dependencies": {
     "com.unity.ai.assistant": "2.0.0"

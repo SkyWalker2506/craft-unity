@@ -2,104 +2,128 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
+using Unity.AI.MCP.Editor.ToolRegistry;
 using UnityEditor;
 using UnityEngine;
-using Unity.AI.MCP.Editor.ToolRegistry;
 
 namespace SkyWalker.Craft.Editor.Core
 {
-    /// <summary>
-    /// Ensures CRAFT's MCP tools are registered with Unity's MCP bridge even when
-    /// TypeCache auto-discovery (the default path used by com.unity.ai.assistant 2.6)
-    /// fails to enumerate assemblies loaded from Git-URL UPM packages.
-    ///
-    /// Runs a deferred pass on Editor startup: scans SkyWalker.Craft.Editor.McpTools
-    /// types, finds public static methods carrying [McpTool], and calls
-    /// McpToolRegistry.RegisterMethodTool(...) for each. RegisterMethodTool is the
-    /// public entrypoint used internally by Unity to register static-method tools;
-    /// it is idempotent — duplicate names are skipped rather than overwritten.
-    /// </summary>
-    public static class CraftMcpBootstrap
+    static class CraftMcpBootstrap
     {
-        const string LogPrefix = "[CRAFT MCP] ";
+        const string ToolsNamespace = "SkyWalker.Craft.Editor.McpTools";
+
+        static readonly MethodInfo s_GenericRegisterTool = typeof(McpToolRegistry)
+            .GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .FirstOrDefault(method => method.Name == nameof(McpToolRegistry.RegisterTool) && method.IsGenericMethodDefinition);
+
+        static bool s_RegistrationScheduled;
 
         [InitializeOnLoadMethod]
-        static void Init()
+        static void Initialize()
         {
-            // Wait one editor tick so the MCP bridge + Unity registry finish their own
-            // InitializeOnLoad pass before we register anything.
-            EditorApplication.delayCall += RegisterTools;
+            McpToolRegistry.ToolsChanged -= OnToolsChanged;
+            McpToolRegistry.ToolsChanged += OnToolsChanged;
+            ScheduleRegistration();
         }
 
-        static void RegisterTools()
+        static void OnToolsChanged(McpToolRegistry.ToolChangeEventArgs args)
         {
-            EditorApplication.delayCall -= RegisterTools;
+            if (args.ChangeType == McpToolRegistry.ToolChangeType.Refreshed)
+                ScheduleRegistration();
+        }
 
-            var registered = new List<string>();
-            var skipped = new List<string>();
+        static void ScheduleRegistration()
+        {
+            if (s_RegistrationScheduled)
+                return;
 
-            try
+            s_RegistrationScheduled = true;
+            EditorApplication.delayCall -= RegisterCraftTools;
+            EditorApplication.delayCall += RegisterCraftTools;
+        }
+
+        static void RegisterCraftTools()
+        {
+            s_RegistrationScheduled = false;
+            EditorApplication.delayCall -= RegisterCraftTools;
+
+            var registeredNames = new List<string>();
+            foreach (var (method, attribute) in GetCraftToolMethods())
             {
-                var asm = typeof(CraftMcpBootstrap).Assembly;
-                var mcpToolTypes = asm.GetTypes()
-                    .Where(t => t.Namespace == "SkyWalker.Craft.Editor.McpTools")
-                    .ToArray();
-
-                foreach (var type in mcpToolTypes)
+                try
                 {
-                    var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Static);
-                    foreach (var method in methods)
-                    {
-                        var attr = method.GetCustomAttribute<McpToolAttribute>();
-                        if (attr == null) continue;
-
-                        if (TryRegister(method, attr))
-                            registered.Add(attr.Name);
-                        else
-                            skipped.Add(attr.Name);
-                    }
+                    RegisterTool(method, attribute);
+                    registeredNames.Add(attribute.Name);
                 }
-
-                if (registered.Count > 0)
-                    Debug.Log(LogPrefix + $"Registered {registered.Count} MCP tools: {string.Join(", ", registered)}");
-                if (skipped.Count > 0)
-                    Debug.Log(LogPrefix + $"Skipped {skipped.Count} already-registered tools: {string.Join(", ", skipped)}");
-                if (registered.Count == 0 && skipped.Count == 0)
-                    Debug.LogWarning(LogPrefix + "No [McpTool] methods discovered in SkyWalker.Craft.Editor.McpTools namespace.");
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[CRAFT] Failed to register MCP tool '{attribute.Name}': {ex.Message}");
+                }
             }
-            catch (Exception ex)
+
+            var toolList = registeredNames.Count > 0 ? string.Join(", ", registeredNames) : "none";
+            Debug.Log($"[CRAFT] Registered {registeredNames.Count} MCP tools: {toolList}");
+        }
+
+        static IEnumerable<(MethodInfo method, McpToolAttribute attribute)> GetCraftToolMethods()
+        {
+            return typeof(CraftMcpBootstrap).Assembly
+                .GetTypes()
+                .Where(type => type.Namespace != null && type.Namespace.StartsWith(ToolsNamespace, StringComparison.Ordinal))
+                .OrderBy(type => type.FullName)
+                .SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.Static).OrderBy(method => method.Name))
+                .Select(method => (method, attribute: method.GetCustomAttribute<McpToolAttribute>()))
+                .Where(entry => entry.attribute != null);
+        }
+
+        static void RegisterTool(MethodInfo method, McpToolAttribute attribute)
+        {
+            var parameters = method.GetParameters();
+            if (parameters.Length == 0)
             {
-                Debug.LogError(LogPrefix + $"Bootstrap failed: {ex}");
+                McpToolRegistry.RegisterTool(
+                    attribute.Name,
+                    new ParameterlessTool(method),
+                    attribute.Description,
+                    attribute.EnabledByDefault,
+                    attribute.Groups);
+                return;
+            }
+
+            if (s_GenericRegisterTool == null)
+                throw new MissingMethodException(typeof(McpToolRegistry).FullName, nameof(McpToolRegistry.RegisterTool));
+
+            var parameterType = parameters[0].ParameterType;
+            var wrapperType = typeof(StaticMethodTool<>).MakeGenericType(parameterType);
+            var wrapper = Activator.CreateInstance(wrapperType, method);
+            s_GenericRegisterTool.MakeGenericMethod(parameterType).Invoke(null, new[] { attribute.Name, wrapper, attribute.Description, attribute.EnabledByDefault, attribute.Groups });
+        }
+
+        sealed class ParameterlessTool : IUnityMcpTool
+        {
+            readonly MethodInfo _method;
+
+            public ParameterlessTool(MethodInfo method) => _method = method;
+
+            public Task<object> ExecuteAsync(object parameters)
+            {
+                var result = _method.Invoke(null, Array.Empty<object>());
+                return result is Task<object> task ? task : Task.FromResult(result);
             }
         }
 
-        /// <summary>
-        /// Registers one method-backed MCP tool. Returns true if registration took effect,
-        /// false if the name was already present (TypeCache picked it up first — no-op).
-        /// </summary>
-        static bool TryRegister(MethodInfo method, McpToolAttribute attr)
+        sealed class StaticMethodTool<TParams> : IUnityMcpTool<TParams> where TParams : class
         {
-            // If already in the registry, we're done — TypeCache worked.
-            if (McpToolRegistry.GetTool(attr.Name) != null) return false;
+            readonly MethodInfo _method;
 
-            // RegisterMethodTool is the supported path for static-method tools.
-            // Signature (Unity.AI.MCP.Editor 2.6):
-            //   public static void RegisterMethodTool(string toolName, MethodInfo method,
-            //       string description = null, bool enabledByDefault = false, string[] groups = null)
-            var registerMethod = typeof(McpToolRegistry).GetMethod(
-                "RegisterMethodTool",
-                BindingFlags.Public | BindingFlags.Static);
+            public StaticMethodTool(MethodInfo method) => _method = method;
 
-            if (registerMethod == null)
+            public Task<object> ExecuteAsync(TParams parameters)
             {
-                Debug.LogError(LogPrefix + "McpToolRegistry.RegisterMethodTool not found. " +
-                    "Unity AI Assistant API may have changed — update CraftMcpBootstrap to match.");
-                return false;
+                var result = _method.Invoke(null, new object[] { parameters });
+                return result is Task<object> task ? task : Task.FromResult(result);
             }
-
-            var groups = new[] { "craft" };
-            registerMethod.Invoke(null, new object[] { attr.Name, method, attr.Description, false, groups });
-            return true;
         }
     }
 }

@@ -3,7 +3,9 @@
   "rootNamespace": "SkyWalker.Craft.Editor",
   "references": [
     "SkyWalker.Craft.Runtime",
-    "Unity.AI.Assistant.Editor"
+    "Unity.AI.Assistant.Editor",
+    "Unity.AI.MCP.Editor",
+    "Unity.AI.MCP.Runtime"
   ],
   "includePlatforms": [
     "Editor"

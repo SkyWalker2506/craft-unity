@@ -126,17 +126,17 @@ namespace SkyWalker.Craft.Editor.Operations
             }
         }
 
-        static Type FindComponentType(string typeName)
+        static System.Type FindComponentType(string typeName)
         {
             // Try UnityEngine first
-            var type = Type.GetType($"UnityEngine.{typeName}, UnityEngine.CoreModule");
+            var type = System.Type.GetType($"UnityEngine.{typeName}, UnityEngine.CoreModule");
             if (type != null) return type;
 
-            type = Type.GetType($"UnityEngine.{typeName}, UnityEngine.PhysicsModule");
+            type = System.Type.GetType($"UnityEngine.{typeName}, UnityEngine.PhysicsModule");
             if (type != null) return type;
 
             // Try fully qualified
-            type = Type.GetType(typeName);
+            type = System.Type.GetType(typeName);
             if (type != null) return type;
 
             // Search all assemblies

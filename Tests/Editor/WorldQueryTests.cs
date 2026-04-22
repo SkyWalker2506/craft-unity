@@ -66,6 +66,57 @@ namespace SkyWalker.Craft.Tests.Editor
             Assert.IsTrue(result.totalFound > 0);
         }
 
+        [Test]
+        public void Query_TotalFound_EqualsActualResultCount()
+        {
+            // Integration check: totalFound must always match results.Count
+            var engine = new WorldQueryEngine();
+            var result = engine.Query(new WorldQueryRequest { query = "QueryTest" });
+
+            Assert.AreEqual(result.totalFound, result.results.Count,
+                "totalFound and results.Count must be consistent");
+        }
+
+        [Test]
+        public void Query_MaxResults_IsRespected()
+        {
+            // Create extra objects to exceed default limit
+            var extras = new GameObject[5];
+            for (int i = 0; i < extras.Length; i++)
+                extras[i] = new GameObject($"QueryTestExtra_{i}");
+
+            try
+            {
+                var engine = new WorldQueryEngine();
+                var result = engine.Query(new WorldQueryRequest
+                {
+                    query = "QueryTest",
+                    maxResults = 2
+                });
+
+                Assert.LessOrEqual(result.results.Count, 2,
+                    "Should return at most maxResults entries");
+            }
+            finally
+            {
+                foreach (var g in extras)
+                    if (g != null) Object.DestroyImmediate(g);
+            }
+        }
+
+        [Test]
+        public void Query_NoMatch_ReturnsEmptyResult()
+        {
+            var engine = new WorldQueryEngine();
+            var result = engine.Query(new WorldQueryRequest
+            {
+                query = "ZZZ_NoSuchObject_9999"
+            });
+
+            Assert.AreEqual(0, result.totalFound);
+            Assert.AreEqual(0, result.results.Count);
+        }
+
         [TearDown]
         public void TearDown()
         {

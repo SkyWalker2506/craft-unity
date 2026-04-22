@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Threading;
 using SkyWalker.Craft.Editor.Models;
 using SkyWalker.Craft.Editor.Validation;
@@ -169,6 +170,35 @@ namespace SkyWalker.Craft.Editor.Core
             }
 
             return combined;
+        }
+
+        /// <summary>
+        /// Scans the given assembly for public, non-abstract types implementing
+        /// <see cref="ICraftOperation"/> and registers each one.
+        /// Enables plugin assemblies to contribute operations without editing this class.
+        /// </summary>
+        /// <param name="assembly">Assembly to scan (e.g. Assembly.GetAssembly(typeof(MyPlugin))).</param>
+        /// <returns>Number of operations newly registered.</returns>
+        public int RegisterAssemblyOperations(Assembly assembly)
+        {
+            if (assembly == null) throw new ArgumentNullException(nameof(assembly));
+
+            int count = 0;
+            foreach (var type in assembly.GetTypes())
+            {
+                if (!typeof(ICraftOperation).IsAssignableFrom(type)) continue;
+                if (type.IsAbstract || type.IsInterface) continue;
+                if (type.GetConstructor(Type.EmptyTypes) == null) continue; // needs parameterless ctor
+
+                var op = (ICraftOperation)Activator.CreateInstance(type);
+                if (!_operations.ContainsKey(op.Type))
+                {
+                    _operations[op.Type] = op;
+                    count++;
+                    Debug.Log($"[CRAFT] Plugin op registered from {assembly.GetName().Name}: {op.Type}");
+                }
+            }
+            return count;
         }
 
         public bool Rollback(string transactionId)

@@ -24,6 +24,9 @@ namespace SkyWalker.Craft.Editor.McpTools
 
             [McpDescription("If true, only validate without mutating the scene")]
             public bool dryRun = false;
+
+            [McpDescription("Per-operation timeout in milliseconds. -1 = use CraftEngine.DefaultTimeoutMs (5000ms). Set higher for slow imports.")]
+            public int timeoutMs = -1;
         }
 
         [McpTool("Craft_Execute", "Execute one or more scene operations as a single undoable transaction. Supports CreateGameObject, ModifyComponent, DeleteGameObject. Returns transactionId for rollback.")]
@@ -33,7 +36,8 @@ namespace SkyWalker.Craft.Editor.McpTools
                 parameters.operations,
                 parameters.transactionName,
                 parameters.validate,
-                parameters.dryRun
+                parameters.dryRun,
+                parameters.timeoutMs
             );
 
             return new

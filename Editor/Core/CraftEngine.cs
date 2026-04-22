@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using SkyWalker.Craft.Editor.Models;
 using SkyWalker.Craft.Editor.Validation;
 using UnityEngine;
@@ -19,6 +20,7 @@ namespace SkyWalker.Craft.Editor.Core
         readonly TransactionManager _transactionManager = new();
         readonly TraceRecorder _traceRecorder = new();
         readonly StaticValidator _staticValidator = new();
+        readonly Validation.SandboxValidator _sandboxValidator = new();
         readonly Dictionary<string, ICraftOperation> _operations = new();
 
         public TransactionManager Transactions => _transactionManager;
@@ -41,7 +43,10 @@ namespace SkyWalker.Craft.Editor.Core
             _operations[op.Type] = op;
         }
 
-        public CraftResult Execute(List<CraftOperation> operations, string transactionName, bool validate = true, bool dryRun = false)
+        /// <summary>Default per-operation timeout in milliseconds (5 seconds).</summary>
+        public static int DefaultTimeoutMs { get; set; } = 5000;
+
+        public CraftResult Execute(List<CraftOperation> operations, string transactionName, bool validate = true, bool dryRun = false, int timeoutMs = -1)
         {
             // 1. Validate all operations
             if (validate)
@@ -55,8 +60,17 @@ namespace SkyWalker.Craft.Editor.Core
 
             if (dryRun)
             {
+                // Run sandbox validation in dryRun mode
+                var sandboxResult = _sandboxValidator.Validate(operations);
+                if (!sandboxResult.valid)
+                {
+                    return CraftResult.Failure($"Sandbox validation failed: {sandboxResult.errors[0].message}");
+                }
                 return CraftResult.Success(null, new List<OperationResult>(), null);
             }
+
+            int effectiveTimeout = timeoutMs > 0 ? timeoutMs : DefaultTimeoutMs;
+            using var cts = new CancellationTokenSource(effectiveTimeout);
 
             // 2. Begin transaction
             string transactionId = _transactionManager.Begin(transactionName);
@@ -69,6 +83,13 @@ namespace SkyWalker.Craft.Editor.Core
                 // 3. Execute each operation
                 for (int i = 0; i < operations.Count; i++)
                 {
+                    // Check timeout before each op
+                    if (cts.Token.IsCancellationRequested)
+                    {
+                        throw new OperationCanceledException(
+                            $"Transaction '{transactionName}' timed out after {effectiveTimeout}ms at operation {i}.");
+                    }
+
                     var op = operations[i];
 
                     if (!_operations.TryGetValue(op.type, out var handler))
@@ -94,6 +115,14 @@ namespace SkyWalker.Craft.Editor.Core
                 var trace = _traceRecorder.FinalizeAndStore();
 
                 return CraftResult.Success(transactionId, results, trace);
+            }
+            catch (OperationCanceledException ex)
+            {
+                // Timeout: rollback and report
+                _transactionManager.Rollback(transactionId);
+                var trace = _traceRecorder.FinalizeAndStore();
+                Debug.LogWarning($"[CRAFT] Transaction '{transactionName}' timed out: {ex.Message}");
+                return CraftResult.Failure($"Timeout: {ex.Message}", trace);
             }
             catch (Exception ex)
             {
